@@ -6,14 +6,14 @@
  * @note    底版约定（与 motor.h 预设注释一致）：timer=NULL、引脚=-1
  *          由业务层填（三行样板：create 定时器→填句柄/引脚/通道→create 电机）；
  *          create 对未填 wiring 的底版直接拒（fail-fast，不静默落到错引脚）。
- * @note    定时器预设名对齐 pwm_timer.c 的注册表：
+ * @note    定时器预设名对齐 pwm_timer.c 交付的注册表：
  *          "pwm.motor.20k"（20kHz/4 通道）/ "pwm.servo.50"（50Hz/4 通道）。
  * @note    桥类（DC/ENC）通道语义：cfg.channel=正向通道（↔pin_a），
  *          channel+1=反向通道（↔pin_b）——成对占用（见 motor.c 输出面注）。
  */
 
 #include <string.h>
-#include "motor.h"
+#include "motor/motor.h"
 
 const motor_cfg_preset_t motor_cfg_presets[] = {
     /* 开环基础 PWM：target 即归一化占空（0~duty_max 直控，无反馈） */

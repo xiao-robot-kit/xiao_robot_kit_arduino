@@ -4,7 +4,7 @@
 
 /**
  * @file    imu_types.h
- * @brief   IMU 公共数据类型（驱动输出、算法消费，两侧只依赖本文件）
+ * @brief   IMU 跨层公共数据契约（驱动输出、算法消费，两侧只依赖本文件）
  *
  * @note    单位约定（全库统一，换算只发生在驱动边界）：
  *          - 加速度：g（重力加速度倍数，1g = 9.80665 m/s^2）
@@ -25,7 +25,7 @@ typedef struct {
     float ax, ay, az;   /**< 加速度计零偏，g */
 } imu_bias_t;
 
-/** @brief 一次带温度的采样（温度补偿数据通道） */
+/** @brief 一次带温度的采样（温补实验数据通道） */
 typedef struct {
     imu_sample_t six;   /**< 六轴物理量 */
     float        temp;  /**< 芯片温度，°C */

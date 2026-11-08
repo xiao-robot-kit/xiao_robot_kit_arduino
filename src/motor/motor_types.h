@@ -32,12 +32,12 @@ typedef struct {
 } motor_state_t;
 
 /*
- * 故障位图位义（motor_state_t.fault 的实现期定义）。
+ * 故障位图位义（motor_state_t.fault 的实现期定义——补齐上方注释的欠账）。
  *
  * 语义：非锁存「活状态」——每次 motor_poll 重估：被拒绝的那一拍置位并
  * 保持到下一次成功推进，可恢复故障（如瞬时编码器读失败）消除后自清；
  * 正常运行 steady 态恒为 0。真值走 float 字段，位图只表达「发生了什么」，
- * 不用任何值域内哨兵伪装状态（哨兵值会与速度值域相撞）。
+ * 不用任何值域内哨兵伪装状态（防雷：旧式实现 0xFF 撞 speed 值域）。
  */
 #define MOTOR_FAULT_ENC_READ     (1u << 0)  /**< 编码器读失败（HAL 返回 -1） */
 #define MOTOR_FAULT_ENC_HAL      (1u << 1)  /**< 编码器 HAL 未挂载或缺 encoder_read */

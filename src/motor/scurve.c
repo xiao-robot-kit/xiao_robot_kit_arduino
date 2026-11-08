@@ -1,11 +1,15 @@
 /* SPDX-License-Identifier: MIT */
 /**
  * @file    scurve.c
- * @brief   S 梯度（七相位恒定 jerk）轨迹发生器实现（纯计算，零硬件依赖；
- *          闭式解析构造——段表由解析公式一次性生成，非数值迭代）
+ * @brief   S 梯度（七相位恒定 jerk）轨迹发生器实现（纯计算，零硬件依赖）
+ *
+ * @note    资产定性（如实）：提炼自旧式实现冻结资产，仅单测覆盖，无实机验证。
+ *          闭式数学提炼自旧式实现 host 侧 motion_planner.py 的解析基准
+ *          （_accel_segs / _mirror_to_decel / _plan_move_analytic），
+ *          表回放状态机形态提炼自旧式实现 embedded 侧 scurve_exec.c。
  */
 
-#include "scurve.h"
+#include "motor/scurve.h"
 
 #include <math.h>
 #include <stddef.h>
@@ -13,7 +17,7 @@
 
 /* ---- 内部算法常量（命名常量，非业务可调参数——数值精度阈值） ---- */
 
-/** 段长裁剪阈值 [s]：低于此的相位视为未使用 */
+/** 段长裁剪阈值 [s]：低于此的相位视为未使用（对齐旧式实现 _SWITCH_TOL 量级） */
 #define SCURVE_T_EPS 1e-12
 /** 构建自检相对容差：位移闭合 / 终态静止（解析构造实际误差 ~1e-12 量级） */
 #define SCURVE_CHK_REL 1e-9
@@ -58,7 +62,7 @@ static void negate_seg(scurve_seg_t *g, double sgn)
     }
 }
 
-/* ── 加速段表（0→v，折叠域 v>0） ─────────────────────────────── */
+/* ── 加速段表（0→v，折叠域 v>0；提炼自旧式实现 _accel_segs） ──────── */
 
 /**
  * @brief  0→v 的时间最优加速段（cruise 前半的原子件，减速侧取其镜像）
@@ -88,7 +92,7 @@ static int accel_segs(scurve_seg_t *out, double v, double amax, double jerk)
     return n;
 }
 
-/* ── 镜像减速 ───────────────────────────────────────────────── */
+/* ── 镜像减速（提炼自旧式实现 _mirror_to_decel） ──────────────────── */
 
 /** 加速侧相位名 → 减速侧镜像相位名（匀速不进镜像） */
 static scurve_phase_t mirror_phase(scurve_phase_t ph)
@@ -125,7 +129,7 @@ static int mirror_decel(const scurve_seg_t *up, int n_up, scurve_seg_t *out)
     return n_up;
 }
 
-/* ── 闭式反解（三角峰值解析解，无数值迭代） ──────────────────── */
+/* ── 闭式反解（修雷点：旧式实现三角峰值用 80 次二分逼近，此处全闭式） ── */
 
 /**
  * @brief  0→v 加速距离闭式 d(v)（v>0；分支在 v=amax²/jerk 处解析连续）
@@ -183,7 +187,7 @@ static int build_move(scurve_seg_t *out, double dist, const scurve_cfg_t *cfg)
             n++;
         } /* else：恰达 d_full 的行程——零长匀速段裁掉（6 相退化） */
     } else {
-        /* 三角：距离不足，峰值闭式反解 */
+        /* 三角：距离不足，峰值闭式反解（旧式实现此处为 80 次二分） */
         const double v_peak = v_peak_for(dist / 2.0, amax, jerk);
         n_up = accel_segs(out, v_peak, amax, jerk);
         n = n_up;
@@ -346,7 +350,7 @@ static int commit_plan(scurve_t *s, const scurve_seg_t *tab, int n,
 
 /* ── 入口参数防御 ───────────────────────────────────────────── */
 
-/** cfg 四字段全 > 0 且有限（入口防御——非法配置拒绝构建计划） */
+/** cfg 四字段全 > 0 且有限（旧式实现 algo cfg 零防御雷的对症防御） */
 static int cfg_valid(const scurve_cfg_t *cfg)
 {
     return isfinite((double)cfg->vmax) && cfg->vmax > 0.0f
@@ -355,7 +359,7 @@ static int cfg_valid(const scurve_cfg_t *cfg)
         && isfinite((double)cfg->dt) && cfg->dt > 0.0f;
 }
 
-/** 非法入参 → 不动的安全态（拒绝构建计划，step 一步都不输出） */
+/** 非法入参 → 不动的安全态（旧式实现「非法表回 -1 + 空表安全态」同构） */
 static void safe_state(scurve_t *s, const scurve_cfg_t *cfg)
 {
     memset(s, 0, sizeof *s);
@@ -419,7 +423,7 @@ int scurve_init(scurve_t *s, const scurve_cfg_t *cfg, float target)
         for (i = 0; i < n && i < SCURVE_SEGS_MAX; i++)
             negate_seg(&tab[i], sgn);
     }
-    /* dist == 0：零行程合法——空表走 commit 的空计划分支 */
+    /* dist == 0：零行程合法（旧式实现空表同构）——空表走 commit 的空计划分支 */
 
     if (commit_plan(&tmp, tab, n, 0.0, dist) != 0) {
         safe_state(s, cfg);
@@ -442,7 +446,7 @@ float scurve_step(scurve_t *s)
     s->t += (double)s->cfg.dt;
     if (s->n_seg == 0 || s->t >= s->t_total) {
         /* 到时（或空计划）：钉死终态。t 单调 + 本拍一次置 done ⇒ 末点只发
-         * 一次——dt 整除总时长时也**不会**多发一个重复末点。 */
+         * 一次——dt 整除总时长时也**不会**多发一个重复末点（旧 host 雷）。 */
         s->t = s->t_total;
         s->done = 1;
         s->p = s->p_end;

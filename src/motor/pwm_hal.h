@@ -3,27 +3,27 @@
 #define MTR_PWM_HAL_H
 
 #include <stdint.h>
-#include "pwm_timer.h"
+#include "motor/pwm_timer.h"
 
 /**
  * @file    pwm_hal.h
  * @brief   PWM 平台抽象层（HAL 函数指针表 + 通道面组件 API）
  *
- * @note    分层（对齐 imu 库的总线抽象模式，依赖单向）：
- *          平台层（如 ESP-IDF LEDC）填一份 pwm_hal_t 并在启动期注册；
+ * @note    分层（对齐 imu_hal_i2c.h 模式，依赖单向）：
+ *          port 层（如 ESP-IDF LEDC）填一份 pwm_hal_t 并在启动期注册；
  *          本组件（pwm_timer.c）与上层电机驱动只认本头，不 include 任何平台头。
  * @note    返回值语义（全平台统一）：0 = 成功；-1 = 失败。无部分成功。
- * @note    平台实现方契约（不遵守 = 平台层 bug）：
+ * @note    平台实现方契约（不遵守 = port 层 bug）：
  *          - timer_config 成功后载波立即输出，全部通道占空 0（上电安全态）；
  *          - timer_release 必须真实释放平台定时器与其全部通道资源
- *            （不许只配置不释放；mock 单测守此条）；
+ *            （旧式实现雷：LEDC timer 只配置永不释放——禁止照搬，mock 单测守此条）；
  *          - plat 句柄经 timer_release 归还后，一切 channel_* 不得再接受它。
  * @note    频率单源：载波频率只属于 pwm_timer_t 实例（创建参数）；
  *          电机层换算一律经 pwm_timer_freq(句柄) 取频，cfg 内不复制频率值
- *          （频率单源无分叉，防「换频不贯通」）。
+ *          （防「换频不贯通」雷：单源无分叉）。
  */
 
-/** @brief PWM 平台操作表（平台层注册；实例在 create 时快照本表指针） */
+/** @brief PWM 平台操作表（port 层注册；实例在 create 时快照本表指针） */
 typedef struct {
     /**
      * @brief   配置一个平台定时器（一组同频通道）
@@ -62,7 +62,7 @@ typedef struct {
 } pwm_hal_t;
 
 /**
- * @brief   注册平台 HAL（平台层启动期调用一次，之后不改）
+ * @brief   注册平台 HAL（port 层启动期调用一次，之后不改）
  * @return  0 = 成功；-1 = 参数非法（NULL / 表内函数缺位）或重复注册
  * @note    实例在 create 时快照注册表指针：运行期注册表不换、不影响存量实例。
  */

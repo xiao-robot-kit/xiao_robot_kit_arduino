@@ -11,7 +11,7 @@
  * @note    嵌套语义：电机配置（motor_cfg_t.timer）持有本实例句柄——
  *          多台电机传同一定时器句柄 + 各自 channel = 共定时器分通道；
  *          传不同句柄 = 各自定时器。定时器数量与频率由业务层决定。
- * @note    平台面（LEDC 等）由平台层 HAL 实现，本头零平台依赖。
+ * @note    平台面（LEDC 等）由 port 层 HAL 实现，本头零平台依赖。
  */
 
 /** @brief PWM 定时器实例（不透明句柄，实现定义于 src） */
@@ -44,7 +44,7 @@ typedef struct {
     uint8_t     channels;   /**< 预设通道数 */
 } pwm_timer_preset_t;
 
-/** @brief 预设表（定义在 pwm_timer.c，追加预设只改那一个文件） */
+/** @brief 预设表（定义在 src，追加预设只改那一个文件） */
 extern const pwm_timer_preset_t pwm_timer_presets[];
 extern const int                 pwm_timer_preset_count;
 

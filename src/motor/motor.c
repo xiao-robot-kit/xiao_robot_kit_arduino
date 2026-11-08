@@ -3,7 +3,21 @@
  * @file    motor.c
  * @brief   电机实例核心实现（四类 kind 同一 create 接口分派；POSIX 风格）
  *
- * @note    输出面（对齐 pwm_hal.h 通道面）：
+ * @note    原创律：自研。提炼自旧式实现（旧式实现路径
+ *          - motor_lib.c 的「配置→算法→驱动」分派思路（静态注册制 s_devs
+ *            槽位数组是重构对象，不照抄：本实现 malloc 实例、零静态零上限）；
+ *          - motor_algo.c 的换算思路（舵机角→脉宽线性、直流符号/幅值拆分；
+ *            其 cfg 零防御（NULL 解引用）不照抄：本实现入口全参数校验）。
+ *          按审查报告修雷重组：
+ *          - 0xFF 哨兵撞值域 → motor_state_t 显式 fault 位图 + float 真值；
+ *          - 编码器两步读/复位竞态 → HAL 单调用原子快照 + 差分（motor_hal.h 契约）；
+ *          - 换频不贯通 → 频率单源 pwm_timer_t 实例，本文件从不缓存频率，
+ *            SERVO 换算一律经 pwm_timer_freq() 现取（pwm_hal.h 同款铁律）；
+ *          - PID 抗饱和：消费并行任务交付的 pid.h/pid.c（back-calculation
+ *            回灌方向按旧式实现 speed_control.py:149 代码义，其 docstring 符号雷
+ *            已在 pid.h:73-76 正确重写——本文件不重复实现算法）。
+ *
+ * @note    输出面（对齐并行任务交付的 pwm_hal.h 通道面）：
  *          - 一通道同时只属一台电机（pwm_timer 通道占用执法，单源）；
  *          - PWM_OPEN/SERVO 占单通道（cfg.channel ↔ pin_a）；
  *          - DC/ENC_CLOSED 方向桥按 pwm_hal.h「桥向由上层双通道表达」：
@@ -12,28 +26,28 @@
  *          - SERVO 经角度→脉宽→占空换算走 set_duty（通道面无 set_us 入口，
  *            换算在电机层做、频率经句柄现取——不引入第二频率事实源）。
  *
- * @note    S 梯度轨迹：上层可用本库的 scurve 模块对目标值整形后再
- *          set_target（motor_cfg_t 不预埋梯度参数——参数零写死约定，
- *          需要轨迹整形的应用自行组合）；当前 poll 目标直通速度环。
+ * @note    S 梯度轨迹：motor.h poll 注释提及，由并行任务 scurve 库交付后
+ *          挂接（motor_cfg_t 现无梯度参数字段且契约冻结，按「参数零写死」
+ *          铁律不预埋 magic number）；当前 poll 目标直通速度环。
  */
 
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
-#include "motor.h"
-#include "motor_hal.h"
-#include "pwm_hal.h"    /* 通道面组件 API（acquire/release/set_duty/enable） */
-#include "pid.h"        /* 速度环（通用 PID 模块） */
+#include "motor/motor.h"
+#include "motor/motor_hal.h"
+#include "motor/pwm_hal.h"    /* 通道面组件 API（acquire/release/set_duty/enable） */
+#include "motor/pid.h"        /* 速度环（并行任务交付的通用 PID 小件） */
 
 /* ── 单位换算常量（物理定义，非可调参数——不属 magic number 范畴） ── */
 #define MTR_US_PER_SEC_F   1000000.0f   /**< us/s */
 #define MTR_RPM_PER_RPS_F  60.0f        /**< rpm/(rev/s) */
 
-/* ── 速度环配置映射（motor.h 的 motor_pid_cfg_t → pid.h 的 pid_cfg_t） ──
- * kb（回灌系数）在 motor_pid_cfg_t 无字段（接口不加）：按 Åström 推荐
- * 跟踪时间常数 Tt=kp/ki 取 kb=ki/kp（回灌系数常取 ki/kp 量级）；
- * kp<=0 退 kb=ki（纯积分环等比回灌），ki=0 得 kb=0=
+/* ── 速度环配置映射（motor.h 冻结的 motor_pid_cfg_t → pid.h 的 pid_cfg_t） ──
+ * kb（回灌系数）在 motor_pid_cfg_t 无字段（契约冻结不加）：按 Åström 推荐
+ * 跟踪时间常数 Tt=kp/ki 取 kb=ki/kp（旧式实现 PIParams docstring「常取
+ * ki/kp 量级」）；kp<=0 退 kb=ki（纯积分环等比回灌），ki=0 得 kb=0=
  * 关闭抗饱和（纯 P/PD 无积分）。合法性（有限值/界序/kb>=0）由 create 期
  * pid_init 单源执法——本文件不重复第二份校验表。 */
 static void pid_cfg_from_motor(pid_cfg_t *out, const motor_pid_cfg_t *in)
@@ -72,7 +86,7 @@ static int uses_bridge(motor_kind_t k)
 }
 
 /**
- * @brief   配置全参数校验（create 入口防御）
+ * @brief   配置全参数校验（create 入口防御——防「algo cfg 零防御」雷）
  * @note    channel 范围/占用冲突不在本校验：由 pwm_timer 通道面 acquire
  *          统一执法（单一事实源，避免第二份范围表漂移）。
  * @note    float 字段的 NaN 一并拒绝（NaN 比较恒假 → 走拒绝分支）。
@@ -301,7 +315,8 @@ static int poll_enc(motor_t *m, float dt_s)
               / ((float)m->cfg.cpr * dt_s);
     m->applied = rpm;   /* actual = 编码器测量真值 */
 
-    /* 速度环：PID 出带符号占窗命令（pid.h 实例；目标可先经 scurve 整形） */
+    /* 速度环：PID 出带符号占窗命令（pid.h 实例；S 梯度轨迹待 scurve
+     * 库收编后挂此——见文件头注） */
     if (pid_step(&m->pid, m->target - rpm, dt_s) != 0)
         return -1;   /* 不可达（cfg 经 pid_init 校验 + dt>0 已前置）——防御性拒 */
     float u = m->pid.out;

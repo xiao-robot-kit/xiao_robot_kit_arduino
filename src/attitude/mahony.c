@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MIT */
 /**
  * @file    mahony.c
- * @brief   Mahony 互补滤波实现（float-only）
+ * @brief   Mahony 互补滤波实现（提炼自旧式实现实机验证代码，float-only）
  *
  * @note    七步：1 归一化加速度 2 估计重力 3 叉积误差 4 误差积分
  *          5 陀螺转弧度+PI 修正 6 一阶积分 7 归一化。
  */
 
 #include <math.h>
-#include "mahony.h"
+#include "attitude/mahony.h"
 
 void mahony_init(mahony_t *m, float kp, float ki, float dt)
 {

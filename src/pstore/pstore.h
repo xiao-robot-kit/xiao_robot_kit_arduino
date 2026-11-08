@@ -9,6 +9,12 @@
  * @file    pstore.h
  * @brief   参数持久化组件：条目注册表 + 统一帧序列化 + CRC32 + 两阶段原子加载
  *
+ * @note    提炼自旧式实现自有实现 旧式实现：
+ *          - `embedded/src/shared/pstore/pstore.c`（序列化 / CRC / 条目注册——重组）
+ *          - `embedded/examples/_shared/pstore/pstore.c`（flash 后端思路——平台件分层）
+ *          重组非照搬：句柄实例化 + 参数零写死 + 后端带 ctx，帧格式自 v1 起算
+ *          （与旧式实现格式不兼容，那是封存树的资产，按 INT-5 单向蒸馏）。
+ *
  * @note    解决的问题：多个模块各自往持久化介质写会互相覆盖、各自管格式。
  *          本组件把所有参数条目收进一张注册表，一次性序列化进一个帧，
  *          集中做校验与脏检查落盘。
@@ -22,19 +28,22 @@
  *          offset 16: crc32    u32   （覆盖 offset 8..16 的 count+data_len 两字段 + 数据区）
  *          offset 20: item × count: klen(2) key(klen) dlen(2) data(dlen)
  *          ```
- *          @note CRC 覆盖 count 与 data_len（只盖数据区的旧式 header CRC
- *          漏检条目数/长度篡改——见 load 注记）。
+ *          @note CRC 覆盖 count 与 data_len（旧式实现雷已修【medium→雷3】：
+ *          旧 header CRC 只盖数据区，count 无保护——见 load 注记）。
  *          @note magic/version 是身份字段，不进 CRC：不匹配按
  *          ERR_MAGIC/ERR_VERSION 上报（首次上电/格式演进的正路径），不按损坏处理。
  *
- * @note    两阶段原子加载：若解析中途遇 CORRUPT 才返回，此前已匹配的条目
- *          已被 memcpy 覆盖，ram 被部分污染（非原子）。本版 load 严格两阶段：
- *          **阶段一全量读入内部缓冲、逐条边界校验并生成应用计划，任一步
- *          失败立即返回、ram 零字节改动；阶段二才把计划一次性 memcpy 应用**。
- *          加载失败 = 帧不可用 = 调用方走默认值路径。
+ * @note    两阶段原子加载（旧式实现雷已修【medium→雷1】）：
+ *          旧 `pstore_load` 注释称「失败不修改 ram」，但解析中途遇 CORRUPT 返回时，
+ *          之前已匹配的条目已被 memcpy 覆盖——注释与实现失实
+ *          （旧式实现 embedded/src/shared/pstore/pstore.c:234-269）。
+ *          本版 load 严格两阶段：**阶段一全量读入内部缓冲、逐条边界校验并
+ *          生成应用计划，任一步失败立即返回、ram 零字节改动；阶段二才把
+ *          计划一次性 memcpy 应用**。加载失败 = 帧不可用 = 调用方走默认值路径。
  *
- * @note    错误码设计：每个码都有真实产生路径且被单测覆盖，无死接口
- *          （容量超限 = ERR_NOFIT，真实可测）。
+ * @note    旧式实现雷已修【low→雷2】：旧 PSTORE_ERR_OVERFLOW 无产生路径、
+ *          `pstore_clear_fault` 全仓零调用——本版错误码每个都有产生路径且
+ *          被单测覆盖，无死接口（容量超限 = ERR_NOFIT，真实可测）。
  */
 
 /** @brief 帧格式版本（v1 自本组件起算；变更帧布局必须 bump 并处理旧帧 ERR_VERSION 路径） */
@@ -61,7 +70,7 @@ _Static_assert(sizeof(pstore_frame_hdr_t) == PSTORE_FRAME_HEADER_BYTES,
 /**
  * @brief 加载/保存错误码
  *
- * @note 每个码都有真实产生路径且被单测覆盖（无死码）。
+ * @note 每个码都有真实产生路径且被单测覆盖（雷2 修复：无死码）。
  */
 typedef enum {
     PSTORE_OK            = 0,   /**< 成功 */
@@ -80,12 +89,13 @@ typedef enum {
 /* ───────────────────────── 存储后端契约 ───────────────────────── */
 
 /**
- * @brief 存储后端操作表（RAM 后端内置；flash 后端由平台层实现并填充）
+ * @brief 存储后端操作表（RAM 后端内置；flash 后端由 port 层实现并填充）
  *
  * @note ctx 为实现方上下文（RAM 后端传 pstore_ram_t*；flash 后端传分区/页描述），
  *       由本组件在每次调用时原样回传。
  * @note 擦写临界区（关中断/锁）由后端实现自理：后端自己知道是否需要、
- *       需要多粗的粒度（分层决策：临界区属后端职责，核心层不感知平台）。
+ *       需要多粗的粒度（重组决策：旧式实现把 critical 表传进核心层，
+ *       分层上属于后端职责）。
  */
 typedef struct {
     /**
@@ -109,8 +119,8 @@ typedef struct {
 
     /**
      * @brief 擦除存储区
-     * @param ctx   实现上下文
-     * @param len   擦除字节数（核心层恒传 capacity）
+     * @param ctx  实现上下文
+     * @param len  擦除字节数（核心层恒传 capacity）
      * @retval 0 成功；非 0 失败
      * @note  EEPROM/RAM 后端可为幂等空操作之外的任意安全实现（本组件 RAM 后端置 0xFF）。
      */
@@ -160,7 +170,7 @@ typedef struct {
     uint32_t                magic;      /**< 应用身份魔数（建议避开 0xFFFFFFFF 以区分空白介质） */
 } pstore_cfg_t;
 
-/** @brief 实例句柄（内容私有，定义在 pstore.c） */
+/** @brief 实例句柄（内容私有，定义在 src/pstore.c） */
 typedef struct pstore pstore_t;
 
 /* ───────────────────────── 实例生命周期 ───────────────────────── */
@@ -199,8 +209,8 @@ void pstore_destroy(pstore_t *ps);
  * @retval  PSTORE_ERR_FULL      注册表满（max_items 用尽）
  * @retval  PSTORE_ERR_DUP       key 已注册
  *
- * @note    注册顺序 = 序列化顺序（数组注册表按序写入，帧内容与注册序
- *          一致、可直接对读）。
+ * @note    注册顺序 = 序列化顺序（重组决策：旧式实现链表头插导致序反转，
+ *          数组注册表按序写入，帧内容与注册序一致、可直接对读）。
  */
 int pstore_register(pstore_t *ps, const char *key, void *ram, size_t len);
 
@@ -242,11 +252,12 @@ int pstore_is_dirty(const pstore_t *ps);
  * @retval  PSTORE_ERR_NOFIT   帧超容量（脏标记保留，删条目后可重试）
  * @retval  PSTORE_ERR_BACKEND erase/write 失败（脏标记保留）
  *
- * @note    同步单发（参数帧小、写入频率低；如需异步/延迟落盘，由上层
- *          自行包线程/延迟写，核心保持同步语义）。
+ * @note    同步单发（重组决策：参数帧小、写入频率低，旧式实现的异步状态机
+ *          为保采样循环不阻塞——那是 app 层调度问题，port 可自行包线程/延迟落盘，
+ *          核心保持纯函数式同步语义）。
  * @note    断电窗口：erase→write 非原子，断电落其间 → 介质无有效帧 →
- *          下次 load 走 ERR_* → 调用方恢复默认值（可接受降级；磨损均衡/
- *          双缓冲是后端层的升级路径）。
+ *          下次 load 走 ERR_* → 调用方恢复默认值（可接受降级，磨损均衡
+ *          双缓冲是 port 层升级路径，见组件 README）。
  */
 int pstore_save(pstore_t *ps);
 
@@ -265,11 +276,11 @@ int pstore_save(pstore_t *ps);
  *                              解析条目数与 count 不符/匹配计划超注册表容量）
  *
  * @note    【原子性承诺】任一失败路径下，所有已注册条目的 ram **零字节改动**
- *          （解析在内部 stage 缓冲完成，应用计划全量生成后才 memcpy）。
+ *          （雷1 修复：解析在内部 stage 缓冲完成，应用计划全量生成后才 memcpy）。
  * @note    匹配规则：key 逐字节相同 **且** dlen == 注册 len 才应用；
  *          帧内未注册条目跳过；同 key 在帧内出现多条（合法写入器不产生，
  *          仅损坏帧可达）时按帧序后者胜——确定性语义，文档化处理。
- * @note    阶段一结构校验与 CRC 双层覆盖 count：count 篡改先撞
+ * @note    阶段一结构校验与 CRC 双层覆盖 count（雷3 修复）：count 篡改先撞
  *          CRC（ERR_CHECKSUM）；若 CRC 被一并伪造成一致（测试专用构造），
  *          解析对齐断言（条目数==count、末尾==data_len）兜底拒绝（ERR_CORRUPT）。
  */
@@ -305,7 +316,7 @@ uint32_t pstore_entry_count(const pstore_t *ps);
 
 /**
  * @brief   CRC32（标准 CRC-32/ISO-HDLC：反射多项式 0xEDB88320，
- *          初值 0xFFFFFFFF，结果取反；逐位实现，无查表）
+ *          初值 0xFFFFFFFF，结果取反；自研逐位实现，无查表）
  *
  * @param[in] data  数据
  * @param[in] len   字节数
@@ -313,7 +324,7 @@ uint32_t pstore_entry_count(const pstore_t *ps);
  * @return  CRC32 值
  *
  * @note    公开为帧校验原语：单测用它构造「CRC 一致但结构损坏」的防回归帧；
- *          平台移植/工具可用它离线验证帧完整性。标准自检向量见单测
+ *          port/工具可用它离线验证帧完整性。标准自检向量见单测
  *          （"123456789" → 0xCBF43926）。
  */
 uint32_t pstore_crc32(const void *data, size_t len);

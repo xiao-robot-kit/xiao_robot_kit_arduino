@@ -4,20 +4,20 @@
 
 #include <stdint.h>
 #include <stddef.h>
-#include "motor.h"
+#include "motor/motor.h"
 
 /**
  * @file    motor_hal.h
  * @brief   电机编码器 HAL 契约（只定义函数指针表，不实现——平台件后置）
  *
- * @note    分层对齐 imu 库总线抽象模式（依赖单向）：平台层（如 ESP-IDF
+ * @note    分层对齐 imu_hal_i2c.h 模式（依赖单向）：port 层（如 ESP-IDF
  *          PCNT/中断式正交解码）填一份 motor_hal_t 并 attach 给电机实例；
  *          驱动只认本结构体，不 include 任何平台头。PWM 输出面不在此处——
  *          走 pwm_timer 通道面（见 pwm_hal.h），本表只管编码器输入。
  * @note    返回值语义：0 = 成功；-1 = 失败。无部分成功。
  *
- * @note    原子性契约（编码器「复合读/复位」两步操作与 ISR 有竞态——
- *          本驱动不采用，改为下述单源差分设计）：
+ * @note    原子性契约（防雷：旧式实现编码器「复合读/复位」两步非原子、
+ *          与 ISR 竞态——新驱动不照抄，改为下述单源差分设计）：
  *          - encoder_read 必须在**单次调用**内返回一致的累计计数快照
  *            （平台实现用临界区 / 硬件原子寄存器 / seqlock 式重读保证）；
  *          - 驱动**永不复位**计数器（不存在「读+清零」复合操作）——
@@ -27,7 +27,7 @@
  *            经 pin_a/pin_b 入参区分，一张表可服务全部实例。
  */
 
-/** @brief 编码器输入操作表（平台层提供；实例 attach 时快照指针） */
+/** @brief 编码器输入操作表（port 层提供；实例 attach 时快照指针） */
 typedef struct {
     /**
      * @brief   原子读编码器累计计数（上电以来单调累计，单位 count）

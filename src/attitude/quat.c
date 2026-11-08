@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /**
  * @file    quat.c
- * @brief   三维向量 + 四元数运算实现
+ * @brief   三维向量 + 四元数运算实现（提炼自旧式实现实机验证代码，重组注释）
  */
 
-#include "quat.h"
+#include "attitude/quat.h"
 
 float vec3_norm(const vec3_t *v)
 {

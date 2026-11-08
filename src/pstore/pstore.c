@@ -3,17 +3,19 @@
  * @file    pstore.c
  * @brief   参数持久化组件实现：注册表序列化 + CRC32 + 两阶段原子加载 + 内置 RAM 后端
  *
- * @note    设计要点（完整契约见 pstore.h 文件头）：
- *          - 两阶段原子 load：阶段一只写内部 stage/plan，阶段二才碰 ram；
- *          - 无死接口：错误码全部有产生路径；
- *          - count/data_len 入 CRC + 解析对齐断言双层防护。
+ * @note    提炼自旧式实现 旧式实现
+ *          `embedded/src/shared/pstore/pstore.c`（重组非照搬；帧格式自 v1 起算）。
+ * @note    三处审查雷的落点（头文件 pstore.h 文件头有完整对照）：
+ *          - 雷1【medium】两阶段原子 load：阶段一只写内部 stage/plan，阶段二才碰 ram；
+ *          - 雷2【low】无死接口：错误码全部有产生路径，删除了无调用的 clear_fault；
+ *          - 雷3 count/data_len 入 CRC + 解析对齐断言双层防护。
  * @note    非线程安全：单线程核心；后端若被多线程访问，由后端实现自理加锁
  *          （见 pstore.h 后端契约注记）。
  */
 
 #include <stdlib.h>
 #include <string.h>
-#include "pstore.h"
+#include "pstore/pstore.h"
 
 /* ───────────────────────── 内部类型 ───────────────────────── */
 
@@ -73,7 +75,7 @@ uint32_t pstore_crc32(const void *data, size_t len) {
  * @brief   帧校验和：CRC32 覆盖 header 的 count+data_len 两字段（offset 8..16）
  *          与数据区（offset 20 .. 20+data_len）
  *
- * @note    count/data_len 入覆盖范围：篡改任一先撞 ERR_CHECKSUM；
+ * @note    【雷3】count/data_len 入覆盖范围：篡改任一先撞 ERR_CHECKSUM；
  *          解析对齐断言（见 pstore_load）再兜一层。
  */
 static uint32_t frame_crc(const uint8_t *stage, uint32_t data_len) {
@@ -226,7 +228,7 @@ int pstore_load(pstore_t *ps) {
     if (be->read(be->ctx, ps->stage, ps->cfg.capacity) != 0)
         return PSTORE_ERR_BACKEND;
 
-    /* ═══ 阶段一：全量校验 + 生成应用计划（此阶段对 ram 零写入——原子性核心） ═══ */
+    /* ═══ 阶段一：全量校验 + 生成应用计划（此阶段对 ram 零写入——雷1 修复核心） ═══ */
     pstore_frame_hdr_t h;
     memcpy(&h, ps->stage, sizeof(h));
     if (h.magic != ps->cfg.magic)           return PSTORE_ERR_MAGIC;
@@ -268,7 +270,7 @@ int pstore_load(pstore_t *ps) {
         off += dlen;
     }
 
-    /* 对齐断言（兜底层）：count 条目恰好吃满数据区——CRC 被伪造一致时
+    /* 对齐断言（雷3 兜底层）：count 条目恰好吃满数据区——CRC 被伪造一致时
      * （测试专用构造），count/data_len 与实际条目流不符在此判 ERR_CORRUPT */
     if (off != limit) return PSTORE_ERR_CORRUPT;
 

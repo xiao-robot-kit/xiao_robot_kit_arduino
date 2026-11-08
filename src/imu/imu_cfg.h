@@ -6,12 +6,12 @@
 
 /**
  * @file    imu_cfg.h
- * @brief   IMU 配置表机制（约定：参数零写死，一切经表注册）
+ * @brief   IMU 配置表机制（项目铁律：参数零写死，一切经表注册）
  *
  * @note    语义参数（人读的物理量：Hz / g / dps），不是芯片寄存器编码——
- *          寄存器编码与灵敏度换算藏在驱动查表里，换器件对外接口不动。
- * @note    用法：应用从命名预设表取配置（imu_cfg_find），或整结构体
- *          经上层协议动态改写；代码里不出现量程/速率 magic number。
+ *          寄存器编码与灵敏度换算藏在驱动查表里，换器件契约面不动。
+ * @note    用法：实验固件从命名预设表取配置（imu_cfg_find），或整结构体
+ *          经协议命令动态改写；代码里禁止出现量程/速率 magic number。
  */
 
 /**
@@ -30,7 +30,7 @@ typedef struct {
 
 /** @brief 命名配置预设（注册表项） */
 typedef struct {
-    const char *name;           /**< 预设名（可寻址，点分命名空间如 "imu.raw.104"） */
+    const char *name;           /**< 预设名（协议可寻址，点分命名空间如 "imu.raw.104"） */
     imu_cfg_t   cfg;            /**< 参数 */
 } imu_cfg_preset_t;
 
@@ -40,7 +40,7 @@ typedef struct {
  */
 const imu_cfg_t *imu_cfg_find(const char *name);
 
-/** @brief 预设表（定义在 imu_cfg_presets.c，追加预设只改那一个文件） */
+/** @brief 预设表（定义在 src/imu_cfg_presets.c，追加预设只改那一个文件） */
 extern const imu_cfg_preset_t imu_cfg_presets[];
 extern const int              imu_cfg_preset_count;
 

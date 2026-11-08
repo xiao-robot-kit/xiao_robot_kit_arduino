@@ -13,7 +13,7 @@
  * @note    生命周期（显式函数式，无状态机框架——等第二个器件出现再提炼框架）：
  *          init（绑总线）→ probe（WHO_AM_I 验证）→ configure（写配置表）
  *          → read / read_temp 循环。
- * @note    器件事实（数据手册，换算表在 lsm6ds3.c）：
+ * @note    器件事实（数据手册，换算表在 src/lsm6ds3.c）：
  *          - I2C 7 位地址 0x6A（SA0 接地）；WHO_AM_I(0x0F) = 0x6A
  *          - 数据小端 int16；加速度 OUTX_L_XL=0x28 起 6 字节；
  *            陀螺 OUTX_L_G=0x22 起 6 字节；温度 OUT_TEMP_L=0x20 起 2 字节
@@ -56,7 +56,7 @@ void lsm6ds3_init(lsm6ds3_t *imu, const imu_i2c_bus_t *bus);
 /**
  * @brief   链路探测：读 WHO_AM_I 并比对期望值 0x6A
  * @return  0 = 器件应答正确；-1 = 总线失败；-2 = 器件 ID 不符
- * @note    总线连通性验证的固件入口即此函数。
+ * @note    实验一（链路探测）的固件入口即此函数。
  */
 int  lsm6ds3_probe(lsm6ds3_t *imu);
 
@@ -85,7 +85,7 @@ int  lsm6ds3_read_raw(lsm6ds3_t *imu, lsm6ds3_raw_t *out);
 int  lsm6ds3_read_temp(lsm6ds3_t *imu, float *celsius);
 
 /**
- * @brief   回读两个控制寄存器（配置↔寄存器一致性校验用）
+ * @brief   回读两个控制寄存器（配置↔寄存器一致性校验用，实验三）
  * @return  0 = 成功；-1 = 总线失败
  */
 int  lsm6ds3_get_ctrl(lsm6ds3_t *imu, uint8_t *ctrl1_xl, uint8_t *ctrl2_g);

@@ -63,7 +63,7 @@ int pid_reset(pid_t *pid);
  * @param   dt     步长 s（> 0 且有限；与控制环周期一致）
  * @return  0 = 成功，控制量已写入 pid->out；-1 = 参数非法（状态不变）
  *
- * 每拍公式：
+ * 每拍公式（与旧式实现 旧式实现 speed_control.py:134-150 的已验证代码同构）：
  *
  *     p        = kp·error
  *     d        = kd·(error − prev_error)/dt        （首拍 d = 0）
@@ -71,7 +71,7 @@ int pid_reset(pid_t *pid);
  *     u        = clamp(u_unsat, out_min, out_max)
  *     integral += ki·error·dt + kb·(u − u_unsat)·dt
  *
- * 抗饱和方向（本库正确性核心）：
+ * 抗饱和方向（本库正确性核心；旧式实现 :13 docstring 的符号表述与代码相反，勿抄）：
  *     正向饱和 u_unsat > out_max ⇒ (u − u_unsat) < 0 ⇒ 回灌为负，积分被【抑制】；
  *     负向饱和 u_unsat < out_min ⇒ (u − u_unsat) > 0 ⇒ 回灌为正，积分被【抑制】；
  *     回灌项恒把积分拉离饱和区（退饱和更快、反向超调更小）。kb = 0 时退化为普通 PID。
@@ -86,7 +86,7 @@ typedef struct {
     pid_cfg_t   cfg;    /**< 配置底版（可直接 pid_init） */
 } pid_cfg_preset_t;
 
-/** @brief 预设表（定义在 pid.c；追加只改那一个文件） */
+/** @brief 预设表（定义在 src/pid.c；追加只改那一个文件） */
 extern const pid_cfg_preset_t pid_cfg_presets[];
 
 /** @brief 预设数量（= 表长） */

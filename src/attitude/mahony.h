@@ -2,8 +2,8 @@
 #ifndef ATT_MAHONY_H
 #define ATT_MAHONY_H
 
-#include "quat.h"
-#include "imu_types.h"
+#include "attitude/quat.h"
+#include "imu/imu_types.h"
 
 /**
  * @file    mahony.h
@@ -12,8 +12,8 @@
  * @note    算法：陀螺仪积分保高频动态，加速度计观测重力方向、
  *          叉积误差经 PI 修正陀螺（补偿漂移）。
  * @note    加速度模长 < 1e-6f（自由落体/无效）时该帧不更新。
- * @note    消费 imu_sample_t（g / dps，类型契约见 imu 库的 imu_types.h），
- *          输出四元数（无死锁、可插值）或欧拉角（对照/调试用）。
+ * @note    消费 imu_sample_t（g / dps），输出四元数（无死锁、可插值）
+ *          或欧拉角（教学对照，exp3 专用）。
  */
 
 /** @brief Mahony 滤波器状态 */

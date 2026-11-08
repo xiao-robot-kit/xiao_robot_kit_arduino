@@ -2,14 +2,14 @@
 #ifndef MTR_MOTOR_H
 #define MTR_MOTOR_H
 
-#include "motor_types.h"
-#include "pwm_timer.h"
+#include "motor/motor_types.h"
+#include "motor/pwm_timer.h"
 
 /**
  * @file    motor.h
  * @brief   实例化电机驱动库接口（业务层 create 一个实例 = 一台电机，随意 N 个）
  *
- * @note    参数零写死（与 IMU 库同构）：一切经 motor_cfg_t 挂载——配置可整结构体
+ * @note    参数零写死（与 IMU 同构）：一切经 motor_cfg_t 挂载——配置可整结构体
  *          手填，或从命名预设表取底版再改；驱动库内零 magic number。
  * @note    POSIX 风格：pthread_create 型（不透明句柄 + 属性结构体）；
  *          实例自带全部状态（PID 积分 / S 梯度相位 / 编码器累计），无全局态。
@@ -95,7 +95,7 @@ typedef struct {
     const char   *timer_preset; /**< 建议的定时器预设名（如 "pwm.motor.20k"） */
 } motor_cfg_preset_t;
 
-/** @brief 预设表（定义在 motor_cfg_presets.c，追加只改那一个文件） */
+/** @brief 预设表（定义在 src，追加只改那一个文件） */
 extern const motor_cfg_preset_t motor_cfg_presets[];
 extern const int                motor_cfg_preset_count;
 
@@ -103,7 +103,7 @@ extern const int                motor_cfg_preset_count;
  * @brief   按名查预设（返回配置底版指针，静态存储）
  * @return  匹配项；NULL = 无此预设
  * @note    底版的 timer=NULL——业务层须先 pwm_timer_create_preset(项.timer_preset)
- *          并把句柄填进 cfg 副本再 create（三行样板见预设注册表的底版约定）。
+ *          并把句柄填进 cfg 副本再 create（三行样板，见组件 README）。
  */
 const motor_cfg_t *motor_cfg_find(const char *name);
 

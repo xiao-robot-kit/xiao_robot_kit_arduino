@@ -4,9 +4,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Arduino library for the **XIAO Robot Kit** (XIAO ESP32S3): **LSM6DS3TR-C IMU
-driver, Mahony attitude fusion, motor control (PWM / servo / H-bridge) and
-parameter persistence**, available from the Arduino Library Manager
-(search "XIAO Robot Kit").
+driver, Mahony attitude fusion, motor control (PWM / servo / H-bridge),
+parameter persistence, IMU bias/temperature calibration and heater control**,
+available from the Arduino Library Manager (search "XIAO Robot Kit").
 
 Same POSIX-style C core as the
 [`xiao_robot_kit_idf`](https://github.com/xiao-robot-kit/xiao_robot_kit_idf)
@@ -76,13 +76,18 @@ sh testing/arduino_stub/check_syntax.sh
 xiao_robot_kit_arduino/
 ├── library.properties      # Arduino Library Manager metadata
 ├── LICENSE                 # MIT
-├── src/
-│   ├── imu/                #   lsm6ds3 driver + preset registry
+├── src/                    # Arduino's only include root — include paths look like
+│   ├── imu/                #   #include "imu/lsm6ds3.h", i.e. component directory name
 │   ├── attitude/           #   quat + mahony
 │   ├── motor/              #   pwm_timer, pid, scurve, motor + preset registry
 │   ├── pstore/             #   persistence: registry + framing + CRC32
-│   ├── arduino/            #   thin Arduino glue (Wire I2C, PWM)
-│   └── imu_types.h         #   single-root include shim (Arduino recursive src/ build)
+│   ├── battery/            #   ADC voltage → state of charge
+│   ├── calibration/        #   IMU bias + temperature compensation
+│   ├── imu_heater/         #   heater state machine (thermal window)
+│   └── arduino/            #   thin Arduino glue (Wire I2C, PWM) — hand-written
+#
+# src/<component>/ files are published copies of the C core (see "Keeping in
+# sync" below); only src/arduino/ is authored in this repository.
 ├── testing/arduino_stub/   #   minimal Arduino.h / Wire.h stubs + check_syntax.sh
 └── examples/
     ├── imu_raw/            #   six-axis CSV for the Serial Plotter
@@ -92,6 +97,16 @@ xiao_robot_kit_arduino/
 
 ESP-IDF users: the same C core ships as an ESP-IDF component in
 [`xiao_robot_kit_idf`](https://github.com/xiao-robot-kit/xiao_robot_kit_idf).
+
+## Keeping in sync
+
+`src/<component>/` is generated from the C core sources — do not edit those
+files here. The one intended difference is the include prefix: the core library
+keeps its component prefix (`#include "att/quat.h"`, `#include "mtr/motor.h"`)
+and this Arduino-shaped copy renames it to the directory name
+(`#include "attitude/quat.h"`, `#include "motor/motor.h"`), because an Arduino
+library has a single include root (`src/`). `src/arduino/` is the only
+hand-written part.
 
 ## License
 

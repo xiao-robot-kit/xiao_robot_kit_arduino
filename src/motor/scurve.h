@@ -8,13 +8,26 @@
  * @file    scurve.h
  * @brief   S 梯度（七相位恒定 jerk）轨迹发生器——motor_poll 的设定值整形源
  *
- * @note    形态：纯状态机、零硬件依赖，可在主机上直接单测；闭式解析构造
- *          （零迭代、零迭代次数魔数）。相对「采样回放表」式实现的三点加固：
- *          1. 三角峰值用解析闭式解（非数值迭代逼近）；
- *          2. t 单调推进 + done 锁存 + 终点钉死：末点只发一次，dt 整除
- *             总时长时也不会多发重复末点；done 后恒返回终值；
- *          3. 全入口参数校验 + 计划构建自检（段间 v/a 连续 / 位移闭合 /
- *             终态静止 / |a|、|j| 界内），任一失败拒装表。
+ * @note    **资产定性（如实）**：提炼自旧式实现冻结资产，仅单测覆盖，无实机验证。
+ *          提炼源两件（均为旧式实现自有代码）：
+ *          - `旧式实现路径`
+ *            （表回放执行器：冻结资产、无运行时使用者、仅单测——本库继承其
+ *            「纯状态机零硬件依赖、可 host 单测」形态与实例游标语义）；
+ *          - `旧式实现路径`
+ *            （七段解析闭式 _accel_segs/_mirror_to_decel/_plan_move_analytic
+ *            ——本库闭式数学的提炼源）。
+ *          旧式实现设计为「MCU 不算 S 曲线、只查 host 下发间隔表」；本库按新任务
+ *          要求反转为 MCU 侧闭式自算（仍零硬件访问，motor_poll 直接消费）。
+ *
+ * @note    按审查报告修雷（相对提炼源）：
+ *          1. 三角峰值旧式实现用 80 次二分逼近（motion_planner.py `_plan_move_analytic`）
+ *             → 本库改解析闭式解，零迭代、零迭代次数魔数；
+ *          2. 旧式实现 host 采样存在「dt 整除总时长时末点重复」雷（poly_profile.py
+ *             先 n=int(T/dt)+1 采满再 append 末点）→ 本库 t 单调推进 + done 锁存
+ *             + 终点钉死，末点只发一次，done 后恒返回终值；
+ *          3. 旧式实现 algo cfg 零防御 → 本库全入口参数校验，且每次计划构建后做
+ *             自检（段间 v/a 连续 / 位移闭合 / 终态静止 / |a|、|j| 界内），
+ *             任一失败拒装表。
  *
  * @note    七相位模型（v(t) 折线圆角化；Biagiotti & Melchiorri 经典 7 段）：
  *          jerk+ / 匀加 / jerk− / 匀速 / jerk− / 匀减 / jerk+。
@@ -104,7 +117,7 @@ typedef struct {
  * @param   target  目标位置 [u]（有限；可为负 = 反向；0 = 零行程合法，立即 done）
  * @retval  0    计划构建并通过自检
  * @retval  -1   参数非法或构建自检失败；实例置安全态（done=1、step 恒 0）
- * @note    重调 init = 复位重走（rewind 语义）。
+ * @note    重调 init = 复位重走（旧式实现 scurve_exec_rewind 的同构替代）。
  */
 int scurve_init(scurve_t *s, const scurve_cfg_t *cfg, float target);
 
@@ -112,7 +125,7 @@ int scurve_init(scurve_t *s, const scurve_cfg_t *cfg, float target);
  * @brief   推进一个 cfg.dt 并返回推进后的位置设定值
  * @param   s  实例
  * @return  当前位置设定值 [u]（绝对域）
- * @note    末点语义（防「整除末点重复」坑）：t 单调 +dt，到 t_total 当拍
+ * @note    末点语义（防旧式实现「整除末点重复」雷）：t 单调 +dt，到 t_total 当拍
  *          置 done 并返回钉死的终点（只发这一次）；此后每拍恒返回同一终值。
  * @note    防御：s == NULL 或未 init（零初始化）返回 0.0f——float 返回面无
  *          错误码通道，安全值 = 原点不动；需要错误码的面走 init/retarget/get。
@@ -160,7 +173,7 @@ typedef struct {
     scurve_cfg_t cfg;     /**< 配置底版（单位域见名：rpm / step） */
 } scurve_cfg_preset_t;
 
-/** @brief 预设表（定义在 scurve.c，追加只改那一个文件） */
+/** @brief 预设表（定义在 src/scurve.c，追加只改那一个文件） */
 extern const scurve_cfg_preset_t scurve_cfg_presets[];
 extern const int scurve_cfg_preset_count;
 

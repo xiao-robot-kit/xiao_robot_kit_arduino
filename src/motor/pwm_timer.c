@@ -10,11 +10,11 @@
  *          -1 返回于 ① 句柄无效/NULL；② 仍有通道被占用（先销毁电机——
  *          上层保证的协议，本层以占用登记强制执法）；③ 平台 timer_release
  *          失败（实例保留、句柄仍可用、可重试 destroy）。
- * @note    资源纪律（相对「只配置不释放」式实现的加固）：
- *          - destroy 真调 timer_release；create 中 malloc 失败也回滚平台资源，
- *            不留孤儿定时器；
+ * @note    防雷（对照旧式实现 pwm.c，按审查清单重组）：
+ *          - 旧式实现 LEDC timer 只增不减 → destroy 真调 timer_release；
+ *            create 中 malloc 失败也回滚平台资源，不留孤儿定时器。
  *          - 哨兵与值域重叠 → freq 的 0 保留为「句柄无效」回值，
- *            create 一律拒绝 freq=0，合法频域与哨兵无重叠；
+ *            create 一律拒绝 freq=0，合法频域与哨兵无重叠。
  *          - 换频不贯通 → 频率只存于本实例，唯一取频入口 pwm_timer_freq()。
  * @note    句柄护栏（尽力防御，非契约保证）：destroy 成功即 free 实例；
  *          正式契约与 free() 同——销毁后不得再使用句柄。护栏魔数用于
@@ -23,8 +23,8 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "pwm_timer.h"
-#include "pwm_hal.h"
+#include "motor/pwm_timer.h"
+#include "motor/pwm_hal.h"
 
 /* 句柄护栏魔数（活实例标识；销毁前置 0——见文件头注） */
 #define PWM_TIMER_MAGIC 0x50574D31u
@@ -77,7 +77,7 @@ pwm_timer_t *pwm_timer_create(uint32_t freq_hz, uint8_t channels)
 
     pwm_timer_t *t = (pwm_timer_t *)malloc(sizeof *t + channels);
     if (t == 0) {
-        /* 回滚：平台资源已配，不留孤儿定时器（防「只增不减」） */
+        /* 回滚：平台资源已配，不留孤儿定时器（防「只增不减」雷） */
         (void)s_hal->timer_release(plat, s_hal->ctx);
         return 0;
     }
@@ -151,8 +151,8 @@ int pwm_timer_channel_enable(pwm_timer_t *t, uint8_t channel, int enable)
 /* ---------- 预设注册表（参数零写死：档位值只住本表） ---------- */
 
 /**
- * @note 档位来源：20kHz 直流载波 / 50Hz 舵机载波（常用组合，实机验证过）；
- *       分辨率由平台 timer_config 自选（本层零平台知识）。
+ * @note 档位来源：旧式实现 PLAN-005（20kHz 直流载波 / 50Hz 舵机载波），
+ *       实机验证过的组合；分辨率由平台 timer_config 自选（本层零平台知识）。
  * @note channels 是常用默认（业务层可自建任意通道数实例），不是上限。
  */
 const pwm_timer_preset_t pwm_timer_presets[] = {

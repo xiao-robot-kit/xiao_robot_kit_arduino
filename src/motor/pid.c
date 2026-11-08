@@ -2,8 +2,12 @@
 /**
  * @file    pid.c
  * @brief   通用 PID 实现（back-calculation 抗饱和）
+ *
+ * 计算结构提炼自旧式实现 旧式实现 host/backend/control/speed_control.py 的
+ * PIController.step（:134-150），按审查报告以【代码】为准重组；该文件 :13 docstring
+ * 的抗饱和符号表述与代码相反，本处全部注释为按代码语义重写的正确方向，未照搬。
  */
-#include "pid.h"
+#include "motor/pid.h"
 
 #include <math.h>     /* isfinite（编译期内建宏，无库调用） */
 #include <string.h>   /* strcmp */
@@ -63,7 +67,7 @@ int pid_step(pid_t *pid, float error, float dt)
         d = pid->cfg.kd * (error - pid->prev_error) / dt;
     }
 
-    /* 未限幅输出：积分取本拍【之前】的累积值 */
+    /* 未限幅输出：积分取本拍【之前】的累积值（与旧式实现已验证代码同构） */
     u_unsat = p + pid->integral + d;
 
     /* 限幅：不饱和时 u == u_unsat，下方回灌项自然为 0 */
@@ -90,9 +94,9 @@ int pid_step(pid_t *pid, float error, float dt)
 /* ---- 预设注册表（追加只改本文件） ---- */
 
 const pid_cfg_preset_t pid_cfg_presets[] = {
-    /* 速度环 PI 常用底版。
+    /* 速度环 PI 底版：数值提炼自旧式实现 PIParams 默认值（speed_control.py:109-113）。
        量纲：误差 counts/s（编码器），输出 duty %（±100 = 满占空）。
-       kd=0：速度环一般不需要 D；kb 常取 ki/kp 量级（回灌时间常数 Tt=kp/ki）。 */
+       kd=0：速度环一般不需要 D（旧式实现同款理由）；kb 旧式实现默认 1（其注云常取 ki/kp 量级）。 */
     { "pid.vel_pi.default",
       { .kp = 2.0f, .ki = 20.0f, .kd = 0.0f,
         .out_min = -100.0f, .out_max = 100.0f, .kb = 1.0f } },
