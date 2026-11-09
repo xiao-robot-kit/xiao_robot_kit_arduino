@@ -5,8 +5,10 @@
 
 Arduino library for the **XIAO Robot Kit** (XIAO ESP32S3): **LSM6DS3TR-C IMU
 driver, Mahony attitude fusion, motor control (PWM / servo / H-bridge),
-parameter persistence, IMU bias/temperature calibration and heater control**,
-available from the Arduino Library Manager (search "XIAO Robot Kit").
+parameter persistence, IMU bias/temperature calibration and heater control**.
+
+⚠️ **Not yet listed in the Arduino Library Manager** — install manually for now
+(see Install below); the registry submission has not been filed yet.
 
 Same POSIX-style C core as the
 [`xiao_robot_kit_idf`](https://github.com/xiao-robot-kit/xiao_robot_kit_idf)
@@ -16,10 +18,14 @@ named preset table.
 
 ## Install
 
-1. Arduino IDE → Library Manager → search **"XIAO Robot Kit"** → Install.
-   (Until the registry submission lands, clone this repository into
-   `~/Documents/Arduino/libraries/xiao_robot_kit_arduino`.)
-2. Board: **XIAO ESP32S3** (Seeed board package in Boards Manager).
+1. **Manual clone (works today)**: clone this repository into your sketchbook
+   libraries folder —
+   `~/Documents/Arduino/libraries/xiao_robot_kit_arduino`
+   (Windows: `C:\Users\<you>\Documents\Arduino\libraries\...`).
+2. ⚠️ Library Manager listing: **pending** — once the submission is accepted,
+   searching "**XIAO Robot Kit Libraries**" will install it; until then use the
+   manual clone above.
+3. Board: **XIAO ESP32S3** (Seeed board package in Boards Manager).
 
 ## Quickstart
 
